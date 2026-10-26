@@ -4,10 +4,11 @@ An installable, mobile-first personal finance tracker. Transactions are saved lo
 
 ## Google Sheets connection
 
-1. Create a blank Google Sheet named `My Money`.
-2. In the sheet, choose **Extensions → Apps Script** and replace the default code with [`google-apps-script/Code.gs`](google-apps-script/Code.gs).
-3. In **Project Settings → Script properties**, create `SHEET_ID` with the part between `/d/` and `/edit` from your Sheet URL.
-4. Deploy **Web app**, select *Execute as: Me*, copy the deployment `/exec` URL, and paste it into the app’s Settings.
+1. In your existing Apps Script project, replace the default code with [`google-apps-script/Code.gs`](google-apps-script/Code.gs). It is already configured with your Sheet ID.
+2. Save, then deploy a **new Web app version** that runs as you.
+3. Paste the deployment `/exec` URL into the app's Settings.
+
+On open, after saving Settings, and after Sync, the app also loads any Sheet rows it doesn't have, so every device shows the same data (this needs the web app's access set to **Anyone**). Only the newest starting balance per account counts. Run `node check-sync.js` to test this merge.
 
 The app marks transactions as synced after sending them. It never removes data from the Sheet; the script also de-duplicates by transaction ID.
 
