@@ -8,7 +8,7 @@ An installable, mobile-first personal finance tracker. Transactions are saved lo
 2. Save, then deploy a **new Web app version** that runs as you.
 3. Paste the deployment `/exec` URL into the app's Settings.
 
-On open, after saving Settings, and after Sync, the app also loads any Sheet rows it doesn't have, so every device shows the same data (this needs the web app's access set to **Anyone**). Only the newest starting balance per account counts. Run `node check-sync.js` to test this merge.
+On open, after saving Settings, and after Sync, the app reloads its synced entries from the Sheet, so rows you edit or delete in the Sheet change on every device (entries not yet synced are kept until you tap Sync; rows you add by hand need a unique ID in column A) (this needs the web app's access set to **Anyone**). Only the newest starting balance per account counts. Run `node check-sync.js` to test this merge.
 
 The app marks transactions as synced after sending them. It never removes data from the Sheet; the script also de-duplicates by transaction ID.
 
