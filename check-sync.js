@@ -11,8 +11,8 @@ const store={'my-money-v1':JSON.stringify({onboarded:true,settings:{scriptUrl:'h
 const sheet=[start('old-mb','maybank',1000,1),start('legacy-mb','maybank',500,0),start('n-mb','maybank',1496.12,9),start('n-tng','tng',2.82,9),start('n-wise','wise',12.07,9),start('n-spp','shopeepay',0.39,9),start('n-cash','cash',0,9),
   tx('edited-in-sheet','tng',1)];
 const posts=[];
-const ctx=vm.createContext({document:{querySelector:el,querySelectorAll:()=>[],addEventListener(){}},window:{addEventListener(){}},localStorage:{getItem:k=>store[k]??null,setItem:(k,v)=>store[k]=v},
-  navigator:{},crypto,Intl,setTimeout,confirm:()=>false,fetch:async(_,o)=>{if(o&&o.method==='POST')posts.push(JSON.parse(o.body));return {json:async()=>({ok:true,transactions:sheet})}}});
+const ctx=vm.createContext({document:{querySelector:el,querySelectorAll:()=>[],addEventListener(){}},window:{addEventListener(){}},location:{search:'',pathname:'/'},history:{replaceState(){}},localStorage:{getItem:k=>store[k]??null,setItem:(k,v)=>store[k]=v},
+  navigator:{},crypto,Intl,URLSearchParams,setTimeout,confirm:()=>false,fetch:async(_,o)=>{if(o&&o.method==='POST')posts.push(JSON.parse(o.body));return {json:async()=>({ok:true,transactions:sheet})}}});
 vm.runInContext(fs.readFileSync(__dirname+'/dist/app.js','utf8'),ctx);
 (async()=>{
   await ctx.syncNow(); // on open: unsynced entries are sent before loading

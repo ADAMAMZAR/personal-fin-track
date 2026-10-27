@@ -5,19 +5,66 @@
  *
  * For a personal tracker, deploy it to run as you. Do not use a broadly public
  * deployment for sensitive financial data without adding your own authentication.
+ *
+ * Phone shortcuts (quickAdd) need a Script property named SHORTCUT_TOKEN:
+ * Project Settings > Script properties > Add property.
  */
 const SHEET_ID = '1jxNJVVSd6oNRGPzPXhQNTc5L7xV2cSUsIvWTRZGqVuI';
 const HEADERS = ['ID','Date','Type','Account','Destination Account','Category','Amount','Note','Created At'];
+// Keep these in step with ACCOUNTS / EXPENSES / INCOMES in dist/app.js.
+const ACCOUNTS = {cash:'Cash', tng:'TNG eWallet', shopeepay:'ShopeePay', maybank:'Maybank', wise:'Wise'};
+const EXPENSES = ['Food & drinks','Fuel & transport','Mobile & internet','Bills & subscriptions','Family & giving','Social & lifestyle','Shopping','Healthcare','Education','Other'];
+const INCOMES = ['Salary','Foodpanda','Other income','Refund / reimbursement','Gift received'];
 
 function doPost(e) {
-  const body = JSON.parse(e.postData.contents || '{}');
-  if (body.action !== 'appendTransactions' || !Array.isArray(body.transactions)) return json_({ok:false, error:'Invalid request'});
-  const sheet = transactionsSheet_();
-  const lastRow = sheet.getLastRow();
-  const known = lastRow > 1 ? new Set(sheet.getRange(2,1,lastRow-1,1).getDisplayValues().flat().filter(String)) : new Set();
-  const rows = body.transactions.filter(t => t && t.id && !known.has(t.id)).map(t => [t.id,t.date,t.type,t.account,t.destination||'',t.category,Number(t.amount),t.note||'',new Date(t.createdAt || Date.now()).toISOString()]);
-  if (rows.length) sheet.getRange(sheet.getLastRow()+1,1,rows.length,HEADERS.length).setValues(rows);
-  return json_({ok:true, added:rows.length});
+  // Shortcuts send form fields (e.parameter); the app sends a JSON body.
+  const body = e.parameter && e.parameter.action ? e.parameter : JSON.parse(e.postData.contents || '{}');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    if (body.action === 'quickAdd') return ContentService.createTextOutput(quickAdd_(body));
+    if (body.action !== 'appendTransactions' || !Array.isArray(body.transactions)) return json_({ok:false, error:'Invalid request'});
+    const sheet = transactionsSheet_();
+    const lastRow = sheet.getLastRow();
+    const known = lastRow > 1 ? new Set(sheet.getRange(2,1,lastRow-1,1).getDisplayValues().flat().filter(String)) : new Set();
+    const rows = body.transactions.filter(t => t && t.id && !known.has(t.id)).map(t => [t.id,t.date,t.type,t.account,t.destination||'',t.category,Number(t.amount),t.note||'',new Date(t.createdAt || Date.now()).toISOString()]);
+    if (rows.length) sheet.getRange(sheet.getLastRow()+1,1,rows.length,HEADERS.length).setValues(rows);
+    return json_({ok:true, added:rows.length});
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// One entry from a phone shortcut. Returns a short line the shortcut shows as its notification.
+function quickAdd_(p) {
+  const token = PropertiesService.getScriptProperties().getProperty('SHORTCUT_TOKEN');
+  if (!token || p.token !== token) return 'Error: wrong or missing token';
+  const type = String(p.type || '').trim().toLowerCase();
+  if (!['income','expense','transfer'].includes(type)) return 'Error: type must be income, expense or transfer';
+  const amount = Math.round(Number(String(p.amount || '').replace(/[^\d.]/g, '')) * 100) / 100;
+  if (!(amount > 0)) return 'Error: amount must be more than 0';
+  const account = accountId_(p.account);
+  if (!account) return 'Error: unknown account "' + (p.account || '') + '"';
+  let destination = '', category = 'Transfer';
+  if (type === 'transfer') {
+    destination = accountId_(p.destination);
+    if (!destination || destination === account) return 'Error: choose a different destination account';
+  } else {
+    const wanted = String(p.category || '').trim().toLowerCase();
+    category = (type === 'income' ? INCOMES : EXPENSES).find(c => c.toLowerCase() === wanted);
+    if (!category) return 'Error: unknown category "' + (p.category || '') + '"';
+  }
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(p.date || '') ? p.date : Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyyy-MM-dd');
+  const note = String(p.note || '').trim();
+  transactionsSheet_().appendRow([Utilities.getUuid(), date, type, account, destination, category, amount, note, new Date().toISOString()]);
+  const where = type === 'transfer' ? ACCOUNTS[account] + ' → ' + ACCOUNTS[destination] : category + ' · ' + ACCOUNTS[account];
+  return 'Saved RM' + amount.toFixed(2) + ' · ' + where;
+}
+
+// Accepts an account id ("tng") or its name ("TNG eWallet"), any case.
+function accountId_(value) {
+  const v = String(value || '').trim().toLowerCase();
+  return Object.keys(ACCOUNTS).find(id => id === v || ACCOUNTS[id].toLowerCase() === v) || '';
 }
 
 function doGet() {
