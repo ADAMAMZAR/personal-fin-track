@@ -5,11 +5,10 @@
  * It uses the Sheet it is bound to (open it from the Sheet: Extensions > Apps Script).
  * A standalone script needs a Script property named SHEET_ID holding the Sheet's ID.
  *
- * For a personal tracker, deploy it to run as you. Do not use a broadly public
- * deployment for sensitive financial data without adding your own authentication.
- *
- * Phone shortcuts (quickAdd) need a Script property named SHORTCUT_TOKEN:
- * Project Settings > Script properties > Add property.
+ * Deploy it to run as you, with access set to Anyone. Two Script properties
+ * (Project Settings > Script properties) keep it private:
+ *   APP_TOKEN       the app sends it with every request; also paste it into the app's Settings.
+ *   SHORTCUT_TOKEN  phone shortcuts (quickAdd) send it. It can only add entries.
  */
 const TABS = {
   Transactions: ['ID','Date','Type','Account','Destination Account','Category','Amount','Note','Created At'],
@@ -34,6 +33,8 @@ const STARTING_BALANCE = 'Starting balance';
 function doPost(e) {
   // Shortcuts send form fields (e.parameter); the app sends a JSON body.
   const body = e.parameter && e.parameter.action ? e.parameter : JSON.parse(e.postData.contents || '{}');
+  const error = body.action === 'quickAdd' ? '' : tokenError_(body.token);
+  if (error) return json_({ok:false, error});
   return withLock_(() => {
     const ss = setup_();
     if (body.action === 'quickAdd') return ContentService.createTextOutput(quickAdd_(ss, body));
@@ -103,7 +104,9 @@ function setOpeningBalances_(ss, balances) {
   return updated;
 }
 
-function doGet() {
+function doGet(e) {
+  const error = tokenError_(e && e.parameter && e.parameter.token);
+  if (error) return json_({ok:false, error});
   return withLock_(() => {
     const ss = setup_();
     const tz = ss.getSpreadsheetTimeZone();
@@ -147,6 +150,13 @@ function setup_() {
   }
   if (!ss.getSheetByName('Settings')) newTab_(ss, 'Settings', DEFAULT_SETTINGS);
   return ss;
+}
+
+// Checked before anything else, so a request without the token can't read, write or set up tabs.
+function tokenError_(token) {
+  const expected = PropertiesService.getScriptProperties().getProperty('APP_TOKEN');
+  if (!expected) return 'APP_TOKEN is not set in Script properties';
+  return token === expected ? '' : 'Wrong or missing app token';
 }
 
 // A bound script uses its own Sheet; a standalone one needs the SHEET_ID script property.

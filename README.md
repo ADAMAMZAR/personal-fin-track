@@ -42,15 +42,16 @@ The app has no environment variables. These five settings control it:
 |---|---|---|
 | Sheet link | Apps Script | Open the script from your Sheet (**Extensions → Apps Script**) and it uses that Sheet automatically. A script created on its own needs a `SHEET_ID` script property set to the ID from your Sheet's URL: `docs.google.com/spreadsheets/d/<SHEET_ID>/edit`. |
 | Web-app access | Apps Script → **Deploy** | Set **Execute as: Me** and **Who has access: Anyone**. The app calls the script without signing in, so any other access level breaks sync. |
-| Apps Script URL | App → **⚙ Settings** | Your deployment's `/exec` URL. It is stored per browser, so enter it once on each device. Leave it blank to keep data on the device only. |
-| `SHORTCUT_TOKEN` | Apps Script → **Project Settings → Script properties** | Shared secret for phone shortcuts. Requests without a matching `token` are rejected. |
+| Apps Script URL and app token | App → **⚙ Settings** | Your deployment's `/exec` URL and your `APP_TOKEN`. They are stored per browser, so enter them once on each device. Leave the URL blank to keep data on the device only. |
+| `APP_TOKEN`, `SHORTCUT_TOKEN` | Apps Script → **Project Settings → Script properties** | Two different secrets. The script refuses any app request without `APP_TOKEN`. `SHORTCUT_TOKEN` is for phone shortcuts and can only add entries. |
 | `Accounts`, `Categories`, `Settings` tabs | Your Sheet | Your accounts and opening balances, expense categories and income sources, and currency, locale and time zone. The script creates them with defaults on first run. See [docs/sheets-schema.md](docs/sheets-schema.md). |
 
 ## Connect Google Sheets
 
 1. **Create the script:** open your Sheet, go to **Extensions → Apps Script**, replace the default code with [`Code.gs`](google-apps-script/Code.gs), and save.
-2. **Deploy:** click **Deploy → New deployment → Web app**, set **Execute as: Me** and **Who has access: Anyone**, then authorize when prompted.
-3. **Connect the app:** copy the `/exec` URL, paste it into **⚙ Settings → Apps Script web-app URL**, and save.
+2. **Create the app token:** run `node -e "console.log(crypto.randomUUID())"`. In Apps Script, open **Project Settings → Script properties → Add script property**, name it `APP_TOKEN`, and paste the value.
+3. **Deploy:** click **Deploy → New deployment → Web app**, set **Execute as: Me** and **Who has access: Anyone**, then authorize when prompted.
+4. **Connect the app:** in **⚙ Settings**, paste the `/exec` URL and your `APP_TOKEN`, then save.
 
 On first use the script adds the `Transactions`, `Accounts`, `Categories` and `Settings` tabs. If the Sheet already has entries, it moves each account's newest starting balance into `Accounts` as its opening balance.
 
@@ -74,7 +75,7 @@ Log an entry without opening the app. iPhone and Android shortcuts both send one
 
 **One-time setup:**
 
-1. Generate a secret: `node -e "console.log(crypto.randomUUID())"`
+1. Generate a new secret, separate from `APP_TOKEN`: `node -e "console.log(crypto.randomUUID())"`
 2. In Apps Script, open **Project Settings → Script properties → Add script property**. Name it `SHORTCUT_TOKEN` and paste the secret as its value.
 
 **Test it** (this adds a real RM12.50 entry, so delete the row afterwards):
@@ -166,6 +167,7 @@ Prints `sync check ok` on success. It runs `dist/app.js` against a stub DOM and 
 - unsent changes survive a reload
 - an entry for a removed account doesn't break the totals
 - old `Starting balance` rows become opening balances
+- every request carries the app token, and a refused token leaves the device's data untouched
 
 ## Deploy
 
@@ -189,6 +191,7 @@ check-sync.js                 Sync test
 
 ## Security
 
-- **Your `/exec` URL is the key to your data.** Anyone who has it can read every entry and add new ones. Don't post it publicly.
-- **Phone shortcuts also need `SHORTCUT_TOKEN`.** Use a long random value.
+- **`APP_TOKEN` is the key to your data.** Without it, the `/exec` URL returns nothing and accepts nothing from the app. Anyone with both can read and change your entries, so keep the token private.
+- **`SHORTCUT_TOKEN` can only add entries.** If a phone or shortcut is lost, change it in Script properties. Your data stays unreadable either way.
+- **Changing a token takes effect immediately.** No redeploy is needed. Enter the new `APP_TOKEN` in **⚙ Settings** on each device.
 - **Keep the Sheet private.** The script runs as you, so the Sheet doesn't need to be shared with anyone.
