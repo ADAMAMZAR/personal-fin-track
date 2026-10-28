@@ -1,14 +1,14 @@
 # Google Sheets schema
 
-> **Status:** all four tabs are live, and the script can add, rename, archive and delete accounts and categories under the [rules](#rules-the-script-enforces) below. Still to come: the app screens that use them, and dropdowns in the Sheet.
+> **Status:** all four tabs are live. Accounts and categories can be added, renamed, reordered, archived and deleted from the app, under the [rules](#rules-the-script-enforces) below. Still to come: dropdowns in the Sheet.
 
 The Sheet has four tabs. Row 1 of each tab is a frozen header row. The script creates any missing tab and fills it with the defaults.
 
 | Tab | One row per | Edited from |
 |---|---|---|
 | [`Transactions`](#transactions) | Entry | App, phone shortcuts, by hand |
-| [`Accounts`](#accounts) | Account | By hand. Opening balances also from the app. |
-| [`Categories`](#categories) | Expense category or income source | By hand |
+| [`Accounts`](#accounts) | Account | App (**Manage**), by hand |
+| [`Categories`](#categories) | Expense category or income source | App (**⚙ Settings → Manage categories**), by hand |
 | [`Settings`](#settings) | App-wide setting | By hand |
 
 Secrets (`APP_TOKEN`, `SHORTCUT_TOKEN`) go in Apps Script **Script properties**, not in the Sheet. Anyone the Sheet is shared with can read its tabs.
@@ -98,7 +98,7 @@ With the example transactions above:
 
 ## Rules the script enforces
 
-These apply to changes made through the script. Edits made directly in the Sheet aren't checked.
+These apply to changes made in the app, which go through the script (or, without a Sheet, are checked the same way on the device). Edits made directly in the Sheet aren't checked.
 
 - **Accounts are archived, not deleted:** an account can be deleted only when no transaction uses it. The same goes for categories.
 - **At least one stays active:** the last active account, and the last active category of each Type, can't be archived or deleted.

@@ -107,7 +107,19 @@ function setOpeningBalances_(ss, balances) {
 
 // Account and category changes from the app. Each returns {ok:true, ...} or {ok:false, error} for the app to show.
 // Accounts are matched by ID, categories by type + exact name.
-const CHANGES = {saveAccount:saveAccount_, archiveAccount:archiveAccount_, deleteAccount:deleteAccount_, saveCategory:saveCategory_, archiveCategory:archiveCategory_, deleteCategory:deleteCategory_};
+const CHANGES = {saveAccount:saveAccount_, archiveAccount:archiveAccount_, deleteAccount:deleteAccount_, saveCategory:saveCategory_, archiveCategory:archiveCategory_, deleteCategory:deleteCategory_, reorder:reorder_};
+
+// list: 'accounts', or a category type ('expense' / 'income'). keys: that list's account IDs or category names in the new order.
+// Rows not in keys keep their Sort.
+function reorder_(ss, body) {
+  const accounts = body.list === 'accounts', type = text_(body.list).toLowerCase();
+  if (!accounts && !['expense','income'].includes(type)) return fail_('Unknown list');
+  const keys = (Array.isArray(body.keys) ? body.keys : []).map(text_), tab = accounts ? 'Accounts' : 'Categories', col = accounts ? 5 : 3;
+  const rows = rows_(ss, tab);
+  const column = rows.map(r => { const k = keys.indexOf(text_(r[0])); return [k >= 0 && (accounts || text_(r[1]).toLowerCase() === type) ? k + 1 : r[col - 1]]; });
+  if (rows.length) ss.getSheetByName(tab).getRange(2, col, rows.length, 1).setValues(column);
+  return {ok:true};
+}
 
 // account: {id?, name, icon?, openingBalance?}. No id adds a new account with an ID made from the name.
 // When updating, icon and openingBalance stay as they are unless sent.

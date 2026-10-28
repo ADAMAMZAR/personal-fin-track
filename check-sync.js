@@ -77,5 +77,23 @@ function load(saved,sheet,reply=()=>({ok:true}),navigator={}){
   const f=load({onboarded:true,settings,transactions:[]},sheet,undefined,{onLine:false});
   assert.match((await f.ctx.change({action:'archiveAccount',id:'tng'})).error,/offline/);
   assert.deepStrictEqual(f.posts,[]);
+
+  // 5. No Sheet connected: the same changes and rules apply on the device, and nothing is sent.
+  const g=load({onboarded:true,settings:{},transactions:[tx('lunch','cash',8,false,{category:'Food & drinks'})]},sheet);
+  const L=async b=>({...await g.ctx.change(b)});
+  assert.deepStrictEqual(await L({action:'saveAccount',account:{name:"Touch 'n Go Card",icon:'💳',openingBalance:5}}),{ok:true,id:'touch-n-go-card'});
+  assert.deepStrictEqual(await L({action:'saveAccount',account:{name:'touch-n-go-card'}}),{ok:false,error:'Another account is already called "touch-n-go-card"'});
+  assert.deepStrictEqual(await L({action:'deleteAccount',id:'cash'}),{ok:false,error:'Cash is used by 1 entry. Archive it instead'});
+  assert.deepStrictEqual(await L({action:'saveCategory',category:{name:'Makan',type:'expense',previousName:'Food & drinks'}}),{ok:true,renamed:1});
+  assert.deepStrictEqual(await L({action:'deleteCategory',name:'Makan',type:'expense'}),{ok:false,error:'"Makan" is used by 1 entry. Archive it instead'});
+  assert.deepStrictEqual(await L({action:'saveCategory',category:{name:'transfer',type:'income'}}),{ok:false,error:'"transfer" is reserved'});
+  assert.deepStrictEqual(await L({action:'reorder',list:'accounts',keys:['touch-n-go-card','cash']}),{ok:true});
+  for(const id of ['tng','shopeepay','maybank','wise','cash'])assert.ok((await L({action:'archiveAccount',id})).ok);
+  assert.deepStrictEqual(await L({action:'archiveAccount',id:'touch-n-go-card'}),{ok:false,error:'Keep at least one active account'});
+  const local=g.saved();
+  assert.deepStrictEqual(local.transactions.map(t=>t.category),['Makan']);
+  assert.deepStrictEqual(local.accounts.filter(x=>!x.archived).map(x=>[x.id,x.icon,x.openingBalance,x.sort]),[['touch-n-go-card','💳',5,1]]);
+  assert.strictEqual(round(g.ctx.balances()).cash,-8); // archived accounts still count
+  assert.deepStrictEqual(g.posts.concat(g.gets),[]);
   console.log('sync check ok');
 })().catch(e=>{console.error(e);process.exit(1)});

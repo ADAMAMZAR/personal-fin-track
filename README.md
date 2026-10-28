@@ -28,11 +28,12 @@ Open <http://localhost:3000>. On first launch the app asks for each account's st
 - **Annual insights:** yearly income, spending and savings, month-by-month spending, and income by source.
 - **Offline-first PWA:** install it to your home screen. Entries save to the device first and upload when you're back online.
 - **Two-way Google Sheets sync:** the Sheet is the source of truth. Edit or delete a row there and every device follows.
+- **Your own accounts and categories:** add, rename, reorder, archive or delete them from the app (**Manage** next to Accounts, and **⚙ Settings → Manage categories**). Anything with entries is archived instead of deleted, so history and balances stay intact.
 - **Phone shortcuts:** log an entry from the home screen, Siri or Back Tap without opening the app.
 - **CSV export:** download every entry from the History tab.
 - **No build step:** plain HTML, CSS and JavaScript in `dist/`, served as-is.
 
-Accounts, categories, currency and time zone live in your Sheet, so you change them there instead of in code. The defaults are Malaysian ringgit (RM) and Malaysia time (`Asia/Kuala_Lumpur`).
+Accounts, categories, currency and time zone live in your Sheet, so you change them in the app or the Sheet instead of in code. The defaults are Malaysian ringgit (RM) and Malaysia time (`Asia/Kuala_Lumpur`).
 
 ## Configuration
 
@@ -65,7 +66,7 @@ On first use the script adds the `Transactions`, `Accounts`, `Categories` and `S
 - **Sheet wins:** edits and deletions made in the Sheet replace the device's copy on the next reload. Entries still waiting to upload are kept.
 - **No duplicates:** the script skips any ID already in the Sheet. If rows ever go missing, **⚙ Settings → Resync all** sends every entry again.
 - **The app never deletes from the Sheet:** **Clear local data** wipes the current device only.
-- **Accounts, categories and settings:** edit the `Accounts`, `Categories` and `Settings` tabs and every device picks up the change on its next reload. Opening balances changed in the app upload the same way entries do.
+- **Accounts, categories and settings:** changes made in the app go straight to the Sheet, need a connection, and show the script's answer (for example, "Cash is used by 2 entries. Archive it instead"). You can also edit the `Accounts`, `Categories` and `Settings` tabs directly. Either way, every device picks up the change on its next reload. Without a Sheet, the same changes apply to the device only.
 
 **Sheet format:** [docs/sheets-schema.md](docs/sheets-schema.md) lists every column of every tab, with examples. Rows you add to `Transactions` by hand need a unique ID in column A, and an account ID (such as `tng`, not `TNG eWallet`) in the account columns.
 
@@ -168,6 +169,7 @@ Prints `sync check ok` on success. It runs `dist/app.js` against a stub DOM and 
 - an entry for a removed account doesn't break the totals
 - old `Starting balance` rows become opening balances
 - every request carries the app token, and a refused token leaves the device's data untouched
+- account and category changes return the script's answer, refuse to run offline, and follow the same rules on a device with no Sheet
 
 ## Deploy
 
