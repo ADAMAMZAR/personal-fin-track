@@ -7,10 +7,11 @@ const acct=(id,openingBalance,archived=false)=>({id,name:id.toUpperCase(),icon:'
 const r=n=>Math.round(n*100)/100,round=b=>Object.fromEntries(Object.entries(b).map(([k,v])=>[k,r(v)]));
 const TOKEN='t0k&n',settings={scriptUrl:'https://fake/exec',appToken:TOKEN};
 // Runs app.js on a saved localStorage state against a fake Sheet. The Sheet ignores POSTs, as if they were lost, and refuses a GET without the app token.
-function load(saved,sheet){
+// A POST without no-cors (an account or category change) gets reply(body) back; reply can throw to act like an unreadable response.
+function load(saved,sheet,reply=()=>({ok:true}),navigator={}){
   const store={'my-money-v1':JSON.stringify(saved)},posts=[],gets=[];
   const ctx=vm.createContext({document:{querySelector:el,querySelectorAll:()=>[],addEventListener(){}},window:{addEventListener(){}},location:{search:'',pathname:'/'},history:{replaceState(){}},localStorage:{getItem:k=>store[k]??null,setItem:(k,v)=>store[k]=v},
-    navigator:{},crypto,Intl,URLSearchParams,setTimeout,confirm:()=>false,fetch:async(url,o)=>{if(o&&o.method==='POST')posts.push(JSON.parse(o.body));else gets.push(url);
+    navigator,crypto,Intl,URLSearchParams,setTimeout,confirm:()=>false,fetch:async(url,o)=>{if(o&&o.method==='POST'){const body=JSON.parse(o.body);posts.push(body);if(o.mode!=='no-cors')return {json:async()=>reply(body)}}else gets.push(url);
       const ok=new URL(url).searchParams.get('token')===TOKEN;return {json:async()=>ok?JSON.parse(JSON.stringify(sheet)):{ok:false,error:'Wrong or missing app token'}}}});
   vm.runInContext(fs.readFileSync(__dirname+'/dist/app.js','utf8'),ctx);
   return {ctx,posts,gets,saved:()=>JSON.parse(store['my-money-v1'])};
@@ -61,5 +62,20 @@ function load(saved,sheet){
   await c.ctx.syncNow();
   assert.ok(c.posts.length&&c.posts.every(p=>p.token==='wrong'));
   assert.deepStrictEqual(c.saved().transactions,before.transactions);
+
+  // 4. Account and category changes: the script's reply comes back to the caller, then the app reloads from the Sheet.
+  const d=load({onboarded:true,settings,transactions:[]},sheet,body=>body.action==='deleteAccount'?{ok:false,error:'Cash is used by 2 entries. Archive it instead'}:{ok:true,id:'touch-n-go-card'});
+  await d.ctx.syncNow();const getsBefore=d.gets.length;
+  const added=await d.ctx.change({action:'saveAccount',account:{name:"Touch 'n Go Card"}});
+  assert.deepStrictEqual({...added},{ok:true,id:'touch-n-go-card'});
+  assert.strictEqual(d.gets.length,getsBefore+1); // reloaded after the change
+  assert.deepStrictEqual({...d.posts.at(-1)},{action:'saveAccount',account:{name:"Touch 'n Go Card"},token:TOKEN});
+  assert.deepStrictEqual({...await d.ctx.change({action:'deleteAccount',id:'cash'})},{ok:false,error:'Cash is used by 2 entries. Archive it instead'});
+  // An unreadable reply or no connection: a clear error, and offline nothing is sent at all.
+  const e=load({onboarded:true,settings,transactions:[]},sheet,()=>{throw new SyntaxError('Unexpected token <')});
+  assert.match((await e.ctx.change({action:'archiveAccount',id:'tng'})).error,/^No reply from Google Sheets/);
+  const f=load({onboarded:true,settings,transactions:[]},sheet,undefined,{onLine:false});
+  assert.match((await f.ctx.change({action:'archiveAccount',id:'tng'})).error,/offline/);
+  assert.deepStrictEqual(f.posts,[]);
   console.log('sync check ok');
 })().catch(e=>{console.error(e);process.exit(1)});

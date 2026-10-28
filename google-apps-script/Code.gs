@@ -39,6 +39,7 @@ function doPost(e) {
     const ss = setup_();
     if (body.action === 'quickAdd') return ContentService.createTextOutput(quickAdd_(ss, body));
     if (body.action === 'setOpeningBalances' && body.balances) return json_({ok:true, updated:setOpeningBalances_(ss, body.balances)});
+    if (CHANGES.hasOwnProperty(body.action)) return json_(CHANGES[body.action](ss, body));
     if (body.action !== 'appendTransactions' || !Array.isArray(body.transactions)) return json_({ok:false, error:'Invalid request'});
     const list = body.transactions.filter(t => t && t.id);
     // An app that hasn't updated yet still sends opening balances as rows; the newest per account wins.
@@ -98,11 +99,118 @@ function setOpeningBalances_(ss, balances) {
   Object.keys(balances).forEach(id => {
     const i = ids.indexOf(id), amount = balances[id];
     if (i < 0 || typeof amount !== 'number' || !isFinite(amount)) return;
-    sheet.getRange(i + 2, 4).setValue(Math.round(amount * 100) / 100);
+    sheet.getRange(i + 2, 4).setValue(round2_(amount));
     updated++;
   });
   return updated;
 }
+
+// Account and category changes from the app. Each returns {ok:true, ...} or {ok:false, error} for the app to show.
+// Accounts are matched by ID, categories by type + exact name.
+const CHANGES = {saveAccount:saveAccount_, archiveAccount:archiveAccount_, deleteAccount:deleteAccount_, saveCategory:saveCategory_, archiveCategory:archiveCategory_, deleteCategory:deleteCategory_};
+
+// account: {id?, name, icon?, openingBalance?}. No id adds a new account with an ID made from the name.
+// When updating, icon and openingBalance stay as they are unless sent.
+function saveAccount_(ss, body) {
+  const a = body.account || {}, id = text_(a.id), name = text_(a.name), icon = [...text_(a.icon)].slice(0, 2).join('');
+  if (!name) return fail_('Give the account a name');
+  if (a.openingBalance !== undefined && (typeof a.openingBalance !== 'number' || !isFinite(a.openingBalance))) return fail_('Opening balance must be a number');
+  const rows = rows_(ss, 'Accounts'), sheet = ss.getSheetByName('Accounts');
+  // Phone shortcuts accept a name or an ID, so neither may repeat another account's.
+  if (rows.some(r => text_(r[0]) !== id && [r[0], r[1]].some(v => text_(v).toLowerCase() === name.toLowerCase()))) return fail_('Another account is already called "' + name + '"');
+  if (id) {
+    const i = rows.findIndex(r => text_(r[0]) === id);
+    if (i < 0) return fail_('No account with ID "' + id + '"');
+    sheet.getRange(i + 2, 2).setValue(name);
+    if (a.icon !== undefined) sheet.getRange(i + 2, 3).setValue(icon);
+    if (a.openingBalance !== undefined) sheet.getRange(i + 2, 4).setValue(round2_(a.openingBalance));
+    return {ok:true, id};
+  }
+  const base = name.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'account';
+  let newId = base;
+  for (let n = 2; rows.some(r => text_(r[0]) === newId); n++) newId = base + '-' + n;
+  appendRow_(sheet, 'Accounts', [newId, name, icon, round2_(a.openingBalance || 0), nextSort_(rows.map(r => r[4])), false]);
+  return {ok:true, id:newId};
+}
+
+// archived: true (default) hides the account from the entry form and shortcuts; false brings it back.
+function archiveAccount_(ss, body) {
+  const rows = rows_(ss, 'Accounts'), id = text_(body.id), i = rows.findIndex(r => text_(r[0]) === id), archived = body.archived !== false;
+  if (i < 0) return fail_('No account with ID "' + id + '"');
+  if (archived && isLastActive_(rows, i, r => text_(r[0]), 5)) return fail_('Keep at least one active account');
+  ss.getSheetByName('Accounts').getRange(i + 2, 6).setValue(archived);
+  return {ok:true};
+}
+
+// Only an account no entry uses can be deleted; otherwise archive it, so its history and balance stay.
+function deleteAccount_(ss, body) {
+  const rows = rows_(ss, 'Accounts'), id = text_(body.id), i = rows.findIndex(r => text_(r[0]) === id);
+  if (i < 0) return fail_('No account with ID "' + id + '"');
+  const used = rows_(ss, 'Transactions').filter(r => text_(r[3]) === id || text_(r[4]) === id).length;
+  if (used) return fail_(text_(rows[i][1]) + ' is used by ' + entries_(used) + '. Archive it instead');
+  if (isLastActive_(rows, i, r => text_(r[0]), 5)) return fail_('Keep at least one active account');
+  deleteRows_(ss.getSheetByName('Accounts'), [i + 2]);
+  return {ok:true};
+}
+
+// category: {name, type, previousName?}. With previousName it renames, and updates every entry that used the old name.
+function saveCategory_(ss, body) {
+  const c = body.category || {}, name = text_(c.name), type = text_(c.type).toLowerCase(), previous = text_(c.previousName);
+  if (!['expense','income'].includes(type)) return fail_('Type must be expense or income');
+  if (!name) return fail_('Give the category a name');
+  if (['transfer', STARTING_BALANCE.toLowerCase()].includes(name.toLowerCase())) return fail_('"' + name + '" is reserved');
+  const rows = rows_(ss, 'Categories'), sheet = ss.getSheetByName('Categories'), ofType = r => text_(r[1]).toLowerCase() === type;
+  if (rows.some(r => ofType(r) && text_(r[0]) !== previous && text_(r[0]).toLowerCase() === name.toLowerCase())) return fail_('There is already a category called "' + name + '"');
+  if (!previous) {
+    appendRow_(sheet, 'Categories', [name, type, nextSort_(rows.filter(ofType).map(r => r[2])), false]);
+    return {ok:true};
+  }
+  const i = rows.findIndex(r => ofType(r) && text_(r[0]) === previous);
+  if (i < 0) return fail_('No category called "' + previous + '"');
+  sheet.getRange(i + 2, 1).setValue(name);
+  const tx = rows_(ss, 'Transactions');
+  let renamed = 0;
+  const column = tx.map(r => { if (text_(r[2]) === type && text_(r[5]) === previous) { renamed++; return [name]; } return [r[5]]; });
+  if (renamed) ss.getSheetByName('Transactions').getRange(2, 6, column.length, 1).setValues(column);
+  return {ok:true, renamed};
+}
+
+function archiveCategory_(ss, body) {
+  const rows = rows_(ss, 'Categories'), i = categoryRow_(rows, body), archived = body.archived !== false;
+  if (i < 0) return fail_('No category called "' + text_(body.name) + '"');
+  if (archived && isLastActive_(rows, i, r => text_(r[1]).toLowerCase() === text_(rows[i][1]).toLowerCase() && text_(r[0]), 3)) return fail_('Keep at least one active ' + text_(rows[i][1]) + ' category');
+  ss.getSheetByName('Categories').getRange(i + 2, 4).setValue(archived);
+  return {ok:true};
+}
+
+function deleteCategory_(ss, body) {
+  const rows = rows_(ss, 'Categories'), i = categoryRow_(rows, body);
+  if (i < 0) return fail_('No category called "' + text_(body.name) + '"');
+  const type = text_(rows[i][1]).toLowerCase(), name = text_(rows[i][0]);
+  const used = rows_(ss, 'Transactions').filter(r => text_(r[2]) === type && text_(r[5]) === name).length;
+  if (used) return fail_('"' + name + '" is used by ' + entries_(used) + '. Archive it instead');
+  if (isLastActive_(rows, i, r => text_(r[1]).toLowerCase() === type && text_(r[0]), 3)) return fail_('Keep at least one active ' + type + ' category');
+  deleteRows_(ss.getSheetByName('Categories'), [i + 2]);
+  return {ok:true};
+}
+
+function categoryRow_(rows, body) {
+  const type = text_(body.type).toLowerCase(), name = text_(body.name);
+  return rows.findIndex(r => text_(r[1]).toLowerCase() === type && text_(r[0]) === name);
+}
+// True when rows[i] is the only active row among those that count (inGroup), so archiving or deleting it would leave none.
+function isLastActive_(rows, i, inGroup, archivedCol) {
+  if (isTrue_(rows[i][archivedCol])) return false;
+  return rows.filter(r => inGroup(r) && !isTrue_(r[archivedCol])).length === 1;
+}
+function nextSort_(sorts) { return Math.max(0, ...sorts.map(n => Number(n) || 0)) + 1; }
+function appendRow_(sheet, name, row) {
+  const at = sheet.getLastRow() + 1;
+  sheet.getRange(at, 1, 1, row.length).setValues([row]);
+  sheet.getRange(at, TABS[name].indexOf('Archived') + 1).insertCheckboxes();
+}
+function entries_(n) { return n + (n === 1 ? ' entry' : ' entries'); }
+function fail_(error) { return {ok:false, error}; }
 
 function doGet(e) {
   const error = tokenError_(e && e.parameter && e.parameter.token);
@@ -138,10 +246,7 @@ function setup_() {
       if (r[5] === STARTING_BALANCE && !(at[r[3]] > time)) { opening[r[3]] = Number(r[6]) || 0; at[r[3]] = time; }
     });
     newTab_(ss, 'Accounts', ids.map((id, i) => { const d = DEFAULT_ACCOUNTS.find(a => a[0] === id) || [id, id, '']; return [id, d[1], d[2], opening[id] || 0, i + 1, false]; }));
-    const drop = old.map((r, i) => r[5] === STARTING_BALANCE ? i + 2 : 0).filter(Boolean);
-    // Sheets refuses to delete every unfrozen row, so keep a spare one.
-    if (tx.getMaxRows() - drop.length < 2) tx.insertRowAfter(tx.getMaxRows());
-    drop.reverse().forEach(row => tx.deleteRow(row));
+    deleteRows_(tx, old.map((r, i) => r[5] === STARTING_BALANCE ? i + 2 : 0).filter(Boolean));
   }
   if (!ss.getSheetByName('Categories')) {
     const cats = ['expense','income'].flatMap(type => DEFAULT_CATEGORIES[type].map(name => [name, type]));
@@ -177,6 +282,13 @@ function newTab_(ss, name, rows) {
 }
 function header_(sheet, name) { sheet.appendRow(TABS[name]); sheet.setFrozenRows(1); sheet.getRange(1, 1, 1, TABS[name].length).setFontWeight('bold'); sheet.autoResizeColumns(1, TABS[name].length); }
 function rows_(ss, name) { const sheet = ss.getSheetByName(name), n = sheet.getLastRow() - 1; return n > 0 ? sheet.getRange(2, 1, n, TABS[name].length).getValues() : []; }
+// Sheets refuses to delete every unfrozen row, so a spare one is added first when needed.
+function deleteRows_(sheet, rows) {
+  if (sheet.getMaxRows() - rows.length < 2) sheet.insertRowAfter(sheet.getMaxRows());
+  rows.sort((a, b) => b - a).forEach(row => sheet.deleteRow(row));
+}
+function text_(v) { return String(v == null ? '' : v).trim(); }
+function round2_(n) { return Math.round(n * 100) / 100; }
 function isTrue_(v) { return v === true || String(v).trim().toUpperCase() === 'TRUE'; }
 function withLock_(fn) { const lock = LockService.getScriptLock(); lock.waitLock(10000); try { return fn(); } finally { lock.releaseLock(); } }
 function json_(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }

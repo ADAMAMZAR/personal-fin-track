@@ -1,6 +1,6 @@
 # Google Sheets schema
 
-> **Status:** all four tabs are live. Still to come: adding, renaming and archiving accounts and categories from the app, the [rules](#rules-the-script-enforces) that go with that, and dropdowns in the Sheet.
+> **Status:** all four tabs are live, and the script can add, rename, archive and delete accounts and categories under the [rules](#rules-the-script-enforces) below. Still to come: the app screens that use them, and dropdowns in the Sheet.
 
 The Sheet has four tabs. Row 1 of each tab is a frozen header row. The script creates any missing tab and fills it with the defaults.
 
@@ -39,7 +39,7 @@ Secrets (`APP_TOKEN`, `SHORTCUT_TOKEN`) go in Apps Script **Script properties**,
 
 | Col | Header | Format | Required | Notes |
 |---|---|---|---|---|
-| A | ID | Lowercase text | Yes | Unique and never changes. Transactions reference this. When adding a row by hand, pick any short unique ID, e.g. `bigpay`. |
+| A | ID | Lowercase text | Yes | Unique and never changes. Transactions reference this. Accounts added through the script get a slug of the name, e.g. `Touch 'n Go Card` → `touch-n-go-card`, with `-2` added if it's already taken. When adding a row by hand, pick any short unique ID. |
 | B | Name | Text | Yes | Shown in the app. Rename freely. |
 | C | Icon | One emoji or character | No | Blank shows the first letter of Name. |
 | D | Opening Balance | Number, 2 decimals | Yes | The balance when you started tracking this account. Use a negative number for money owed, such as a credit card. |
@@ -98,11 +98,13 @@ With the example transactions above:
 
 ## Rules the script enforces
 
-These apply once accounts and categories can be edited from the app.
+These apply to changes made through the script. Edits made directly in the Sheet aren't checked.
 
-- **Accounts are archived, not deleted:** an account can be deleted only when no transaction uses it.
-- **At least one account stays active:** the last active account can't be archived.
-- **Category names are unique per Type:** renaming one rewrites column F of `Transactions`.
+- **Accounts are archived, not deleted:** an account can be deleted only when no transaction uses it. The same goes for categories.
+- **At least one stays active:** the last active account, and the last active category of each Type, can't be archived or deleted.
+- **Names don't repeat:** an account name can't match another account's name or ID, ignoring case. Category names are unique within their Type.
+- **Renaming a category updates history:** every `Transactions` row with the old name and the same Type gets the new name.
+- **`Transfer` and `Starting balance` are reserved** and can't be used as category names.
 - **Phone shortcuts accept active items only:** `quickAdd` rejects archived accounts and categories.
 
 ## Migrating from the current layout

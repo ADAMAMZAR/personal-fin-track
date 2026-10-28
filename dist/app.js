@@ -38,6 +38,9 @@ $('#settings-button').onclick=()=>{$('#script-url').value=state.settings.scriptU
 function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2800)}
 // Every request carries the app token; the script refuses anything without it.
 async function push(body){try{await fetch(state.settings.scriptUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify({...body,token:state.settings.appToken||''})});return true}catch{return false}}
+// change(): add, rename, archive or delete an account or category. Unlike entries these need the script's reply (e.g. "used by 3 entries"),
+// so they're sent as a normal request, only work online, and are followed by a reload. Resolves to {ok:true} or {ok:false, error}.
+function change(body){return syncing=syncing.then(async()=>{if(!state.settings.scriptUrl)return {ok:false,error:'Add your Apps Script URL in Settings first.'};if(navigator.onLine===false)return {ok:false,error:'You’re offline. Connect and try again.'};let reply;try{reply=await(await fetch(state.settings.scriptUrl,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({...body,token:state.settings.appToken||''})})).json()}catch{reply={ok:false,error:'No reply from Google Sheets. Check the Sheet before trying again.'}}await pull();return reply})}
 // syncNow(): send unsynced entries and opening balances, then reload from the Sheet. Runs one at a time so quick saves never send a row twice.
 let syncing=Promise.resolve();
 function syncNow(){return syncing=syncing.then(async()=>{if(!state.settings.scriptUrl||navigator.onLine===false)return;const pending=state.transactions.filter(t=>!t.synced);if(pending.length)await push({action:'appendTransactions',transactions:pending});if(Object.keys(state.pendingOpening).length)await push({action:'setOpeningBalances',balances:state.pendingOpening});await pull()})}
