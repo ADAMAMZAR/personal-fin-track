@@ -4,7 +4,7 @@ My Money is a mobile-first web app for logging spending, income and transfers in
 
 ## Prerequisites
 
-- **Node.js 20 or later:** runs the local server and the sync test. There is nothing to `npm install`.
+- **Node.js 22 or later:** runs the local server, the tests and the backup. There is nothing to `npm install`.
 - **A modern browser:** Chrome or Edge 92+, Safari 15.4+ (iOS 15.4+), or Firefox 98+.
 - **A Google account** *(optional)*: needed for Sheets sync and phone shortcuts. Without one, entries stay on the device.
 
@@ -158,10 +158,31 @@ Duplicate it for **Money in** and **Move money** as on iPhone.
 ## Test
 
 ```bash
-node check-sync.js
+node check-sync.js     # the app
+node check-script.js   # the Apps Script
 ```
 
-Prints `sync check ok` on success. It runs `dist/app.js` against a stub DOM and a fake Sheet, then checks that:
+Both run in a few seconds with no internet and no Sheet:
+
+| Command | Tests | Prints on success |
+|---|---|---|
+| `check-sync.js` | `dist/app.js` against a stub page and a fake Sheet | `sync check ok` |
+| `check-script.js` | `Code.gs` against a fake Google Sheets: moving the old layout, tokens, saving entries, phone shortcuts, every account and category rule, and the Sheet's dropdowns | `Code.gs check ok` |
+
+Run `check-script.js` before pasting a new `Code.gs` into Apps Script.
+
+**Check the live script** after deploying a new `Code.gs`, changing `APP_TOKEN`, or seeing "Could not load" in the app. This needs Windows with Microsoft Edge. In PowerShell:
+
+```powershell
+$env:MM_URL = "https://script.google.com/macros/s/YOUR_ID/exec"
+$env:MM_TOKEN = "your APP_TOKEN"
+node check-live.js
+```
+
+It opens the live app's page in a hidden Edge window and sends five requests from there. It reads with the right token, a wrong one and none, then sends a change the script refuses, to prove the app can read its answers. Each prints PASS or FAIL. No data changes, and the URL and token are only read from the terminal. Close the terminal when you're done, or run `Remove-Item Env:MM_URL, Env:MM_TOKEN`.
+
+<details>
+<summary><b>What <code>check-sync.js</code> covers</b></summary>
 
 - pending entries and opening balances upload when the app opens
 - the Sheet's entries and accounts win over the device's copy
@@ -170,6 +191,28 @@ Prints `sync check ok` on success. It runs `dist/app.js` against a stub DOM and 
 - old `Starting balance` rows become opening balances
 - every request carries the app token, and a refused token leaves the device's data untouched
 - account and category changes return the script's answer, refuse to run offline, and follow the same rules on a device with no Sheet
+
+</details>
+
+## Back up
+
+With `MM_URL` and `MM_TOKEN` set as in [Test](#test):
+
+```powershell
+node backup-sheet.js
+```
+
+It saves your data to a new folder next to the repo, for example `my-money-backup-2026-10-28-1432`. It never writes inside the repo, so your financial data can't be committed by accident, and it never overwrites an earlier backup.
+
+| File | Contents |
+|---|---|
+| `transactions.csv` | Every entry, with the same columns as the Sheet |
+| `accounts.csv` | Each account, plus its current balance and how many entries use it |
+| `categories.csv` | Each category, plus how many entries use it |
+| `settings.csv` | Currency, locale and time zone |
+| `sheet-response.json` | The script's raw reply, for exact restores |
+
+It only reads; the Sheet is never changed. To save somewhere else, pass a folder: `node backup-sheet.js D:\backups\money`. Google Sheets' own **File → Version history** can also roll back the Sheet itself.
 
 ## Deploy
 
@@ -187,7 +230,11 @@ dist/                         The whole app, served as-is
 ├── sw.js                     Service worker (offline cache)
 └── manifest.json             PWA metadata and Android app-icon shortcuts
 google-apps-script/Code.gs    Sheets bridge: sets up the tabs, GET returns everything, POST saves entries, opening balances and quickAdd
-check-sync.js                 Sync test
+check-sync.js                 Tests the app
+check-script.js               Tests Code.gs against a fake Google Sheets
+check-live.js                 Checks the deployed script (Windows + Edge)
+backup-sheet.js               Saves the Sheet to CSV files
+docs/sheets-schema.md         Every tab and column of the Sheet
 .github/workflows/pages.yml   Deploys dist/ to GitHub Pages
 ```
 
