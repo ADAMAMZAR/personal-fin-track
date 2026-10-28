@@ -1,6 +1,6 @@
 # Google Sheets schema
 
-> **Status:** all four tabs are live. Accounts and categories can be added, renamed, reordered, archived and deleted from the app, under the [rules](#rules-the-script-enforces) below. Still to come: dropdowns in the Sheet.
+Accounts and categories can be added, renamed, reordered, archived and deleted from the app, under the [rules](#rules-the-script-enforces) below. Dropdowns and [checks in the Sheet](#checks-in-the-sheet) catch mistakes made by hand.
 
 The Sheet has four tabs. Row 1 of each tab is a frozen header row. The script creates any missing tab and fills it with the defaults.
 
@@ -21,9 +21,9 @@ Secrets (`APP_TOKEN`, `SHORTCUT_TOKEN`) go in Apps Script **Script properties**,
 | B | Date | `YYYY-MM-DD` | Yes | The day the money moved. |
 | C | Type | `expense`, `income` or `transfer` | Yes | Dropdown. |
 | D | Account | Account ID | Yes | Dropdown from `Accounts` column A. The account the money leaves (expense, transfer) or arrives in (income). |
-| E | Destination Account | Account ID | Transfers only | The receiving account. Must differ from Account. Blank for expenses and income. |
-| F | Category | Text | Yes | A `Categories` name whose Type matches column C. Always `Transfer` for transfers. |
-| G | Amount | Number, 2 decimals | Yes | Always positive. Type sets the direction. |
+| E | Destination Account | Account ID | Transfers only | Dropdown from `Accounts` column A. The receiving account. Must differ from Account. Blank for expenses and income. |
+| F | Category | Text | Yes | A `Categories` name whose Type matches column C, with the same capitalization. Always `Transfer` for transfers. Checked, but no dropdown: Sheets can't show one list that changes with column C. |
+| G | Amount | Number, 2 decimals | Yes | Must be more than 0. Type sets the direction. |
 | H | Note | Text | No | Up to 90 characters when entered in the app. |
 | I | Created At | ISO 8601 timestamp (UTC) | Yes | When the entry was recorded. Set automatically. |
 
@@ -98,7 +98,7 @@ With the example transactions above:
 
 ## Rules the script enforces
 
-These apply to changes made in the app, which go through the script (or, without a Sheet, are checked the same way on the device). Edits made directly in the Sheet aren't checked.
+These apply to changes made in the app, which go through the script (or, without a Sheet, are checked the same way on the device). Edits made directly in the Sheet get the lighter [checks below](#checks-in-the-sheet).
 
 - **Accounts are archived, not deleted:** an account can be deleted only when no transaction uses it. The same goes for categories.
 - **At least one stays active:** the last active account, and the last active category of each Type, can't be archived or deleted.
@@ -106,6 +106,24 @@ These apply to changes made in the app, which go through the script (or, without
 - **Renaming a category updates history:** every `Transactions` row with the old name and the same Type gets the new name.
 - **`Transfer` and `Starting balance` are reserved** and can't be used as category names.
 - **Phone shortcuts accept active items only:** `quickAdd` rejects archived accounts and categories.
+
+## Checks in the Sheet
+
+The script adds these to the Sheet on its first request, and adds them back if they're removed. A value that fails is rejected as you type it, and hovering the cell shows a hint. They only apply to typing in the Sheet. The app and phone shortcuts are checked by the script instead.
+
+| Tab | Column | Check |
+|---|---|---|
+| `Transactions` | Type | Dropdown: `expense`, `income`, `transfer` |
+| `Transactions` | Account, Destination Account | Dropdown of the IDs in `Accounts` |
+| `Transactions` | Category | A category of the row's Type, or `Transfer` on a transfer |
+| `Transactions` | Amount | More than 0 |
+| `Accounts` | ID | No repeats |
+| `Accounts` | Opening Balance | A number |
+| `Categories` | Name | No repeats within a Type |
+| `Categories` | Type | Dropdown: `expense`, `income` |
+| `Settings` | Key | Dropdown: `currency`, `locale`, `timezone` |
+
+Things they can't catch, such as deleting an account that entries still use, are what the app's Manage screens are for.
 
 ## Migrating from the current layout
 

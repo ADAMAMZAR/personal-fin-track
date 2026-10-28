@@ -266,7 +266,31 @@ function setup_() {
     newTab_(ss, 'Categories', cats.map(([name, type]) => [name, type, cats.filter(c => c[1] === type).findIndex(c => c[0] === name) + 1, false]));
   }
   if (!ss.getSheetByName('Settings')) newTab_(ss, 'Settings', DEFAULT_SETTINGS);
+  try { addValidation_(ss); } catch (err) { console.error('Could not add Sheet validation: ' + err); }
   return ss;
+}
+
+// Dropdowns and checks so hand edits in the Sheet can't break the app. They only stop typing in the Sheet; the script writes past them.
+// Transactions!C2 is set last and marks the job as done, so a Sheet that lost its rules gets them back on the next request.
+function addValidation_(ss) {
+  const tx = ss.getSheetByName('Transactions');
+  if (tx.getRange(2, 3).getDataValidation()) return;
+  const accounts = ss.getSheetByName('Accounts'), categories = ss.getSheetByName('Categories');
+  const rule = help => SpreadsheetApp.newDataValidation().setAllowInvalid(false).setHelpText(help);
+  const column = (sheet, col, built) => sheet.getRange(2, col, Math.max(sheet.getMaxRows() - 1, 1), 1).setDataValidation(built);
+  const accountIds = accounts.getRange(2, 1, Math.max(accounts.getMaxRows() - 1, 1), 1);
+  column(tx, 4, rule('Pick an account ID from the Accounts tab').requireValueInRange(accountIds, true).build());
+  column(tx, 5, rule('Transfers only: pick an account ID from the Accounts tab').requireValueInRange(accountIds, true).build());
+  // A category of the row's Type, matching case exactly, or Transfer on a transfer row. No dropdown: no single range holds both.
+  column(tx, 6, rule('Use a category of this Type from the Categories tab, or Transfer for a transfer')
+    .requireFormulaSatisfied('=OR(AND($C2="transfer",F2="Transfer"),SUMPRODUCT(EXACT(INDIRECT("Categories!A2:A"),F2)*(INDIRECT("Categories!B2:B")=$C2))>0)').build());
+  column(tx, 7, rule('A positive amount, e.g. 12.50').requireNumberGreaterThan(0).build());
+  column(accounts, 1, rule('Each account needs its own ID').requireFormulaSatisfied('=COUNTIF($A$2:$A,A2)=1').build());
+  column(accounts, 4, rule('A number. Use a negative number for money owed').requireFormulaSatisfied('=ISNUMBER(D2)').build());
+  column(categories, 1, rule('Already a category of this Type').requireFormulaSatisfied('=COUNTIFS($A$2:$A,A2,$B$2:$B,B2)=1').build());
+  column(categories, 2, rule('expense or income').requireValueInList(['expense','income'], true).build());
+  column(ss.getSheetByName('Settings'), 1, rule('currency, locale or timezone').requireValueInList(DEFAULT_SETTINGS.map(s => s[0]), true).build());
+  column(tx, 3, rule('expense, income or transfer').requireValueInList(['expense','income','transfer'], true).build());
 }
 
 // Checked before anything else, so a request without the token can't read, write or set up tabs.
