@@ -1,4 +1,4 @@
-// Run: node check-sync.js — loads dist/app.js with a stub DOM and a fake Sheet, checks the upgrade from 'Starting balance' rows, what gets sent, and how pull() merges.
+// Run: node check-sync.js — loads dist/app.js with a stub DOM and a fake Sheet, checks the upgrade from 'Starting balance' rows, what gets sent, how pull() merges, and how History groups by day.
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const el=()=>new Proxy({classList:{add(){},remove(){},toggle(){}},addEventListener(){},showModal(){},close(){},focus(){}},{get:(o,k)=>k in o?o[k]:''});
 const tx=(id,account,amount,synced,more)=>({id,type:'expense',amount,account,destination:'',category:'Shopping',note:'',date:'2026-10-26',createdAt:5,synced,...more});
@@ -95,5 +95,13 @@ function load(saved,sheet,reply=()=>({ok:true}),navigator={}){
   assert.deepStrictEqual(local.accounts.filter(x=>!x.archived).map(x=>[x.id,x.icon,x.openingBalance,x.sort]),[['touch-n-go-card','💳',5,1]]);
   assert.strictEqual(round(g.ctx.balances()).cash,-8); // archived accounts still count
   assert.deepStrictEqual(g.posts.concat(g.gets),[]);
+
+  // 6. History: newest day first, the most recently added entry first within a day, one header per date.
+  const h=load({onboarded:true,settings:{},transactions:[]},sheet);
+  const days=h.ctx.groupByDay([tx('a','cash',1,true,{date:'2026-10-30',createdAt:1}),tx('b','cash',1,true,{date:'2026-10-31',createdAt:1}),tx('c','cash',1,true,{date:'2026-10-30',createdAt:2}),tx('d','cash',1,true,{date:'2025-01-05'})]);
+  assert.strictEqual(JSON.stringify(days.map(([d,l])=>[d,l.map(t=>t.id)])),JSON.stringify([['2026-10-31',['b']],['2026-10-30',['c','a']],['2025-01-05',['d']]]));
+  assert.strictEqual(vm.runInContext('dayLabel(today())',h.ctx),'Today');
+  assert.match(h.ctx.dayLabel('2025-01-05'),/5.*Jan.*2025/);
+  assert.strictEqual(h.ctx.dayLabel('soon'),'soon'); // a hand-typed Sheet value shows as-is instead of throwing
   console.log('sync check ok');
 })().catch(e=>{console.error(e);process.exit(1)});
