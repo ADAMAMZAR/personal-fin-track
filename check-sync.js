@@ -103,5 +103,9 @@ function load(saved,sheet,reply=()=>({ok:true}),navigator={}){
   assert.strictEqual(vm.runInContext('dayLabel(today())',h.ctx),'Today');
   assert.match(h.ctx.dayLabel('2025-01-05'),/5.*Jan.*2025/);
   assert.strictEqual(h.ctx.dayLabel('soon'),'soon'); // a hand-typed Sheet value shows as-is instead of throwing
+  // A row starts collapsed with just the category and amount; the note, account and date sit in the expandable part.
+  const html=h.ctx.row(tx('x','cash',1,true,{note:'Nasi <lemak>',date:'2025-01-05'})),fold=html.indexOf('</summary>');
+  assert.ok(html.startsWith('<details class="transaction-row">')&&!html.includes(' open'));
+  assert.ok(html.indexOf('Shopping')<fold&&html.indexOf('Nasi &#60;lemak&#62;')>fold&&html.indexOf('Cash')>fold);
   console.log('sync check ok');
 })().catch(e=>{console.error(e);process.exit(1)});
