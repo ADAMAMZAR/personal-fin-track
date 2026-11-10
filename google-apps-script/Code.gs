@@ -77,12 +77,19 @@ function quickAdd_(ss, p) {
   }
   const date = /^\d{4}-\d{2}-\d{2}$/.test(p.date || '') ? p.date : Utilities.formatDate(new Date(), settings.timezone || 'Asia/Kuala_Lumpur', 'yyyy-MM-dd');
   const note = String(p.note || '').trim();
-  ss.getSheetByName('Transactions').appendRow([Utilities.getUuid(), date, type, account, destination, category, amount, note, new Date().toISOString()]);
   const name = id => accounts.find(a => a.id === id).name;
   const where = type === 'transfer' ? name(account) + ' → ' + name(destination) : category + ' · ' + name(account);
   const currency = !settings.currency || settings.currency === 'MYR' ? 'RM' : settings.currency + ' ';
-  return 'Saved ' + currency + amount.toFixed(2) + ' · ' + where;
+  const said = currency + amount.toFixed(2) + ' · ' + where;
+  // A shortcut that timed out and was run again would add the same entry twice, so an identical one from the last 2 minutes isn't added again.
+  const tz = ss.getSpreadsheetTimeZone(), now = Date.now();
+  const repeat = rows_(ss, 'Transactions').some(r => now - new Date(r[8]).getTime() < 120000 && dateText_(r[1], tz) === date && text_(r[2]) === type && text_(r[3]) === account && text_(r[4]) === destination && text_(r[5]) === category && Number(r[6]) === amount && text_(r[7]) === note);
+  if (repeat) return 'Already saved ' + said;
+  ss.getSheetByName('Transactions').appendRow([Utilities.getUuid(), date, type, account, destination, category, amount, note, new Date(now).toISOString()]);
+  return 'Saved ' + said;
 }
+// The Sheet turns typed dates into Date objects; the app and the checks above use yyyy-MM-dd text.
+function dateText_(v, tz) { return v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : text_(v); }
 
 // Accepts an active account's ID ("tng") or name ("TNG eWallet"), any case.
 function accountId_(accounts, value) {
@@ -262,7 +269,7 @@ function doGet(e) {
   return withLock_(() => {
     const ss = setup_();
     const tz = ss.getSpreadsheetTimeZone();
-    const transactions = rows_(ss, 'Transactions').filter(r => r[0]).map(r => ({id:String(r[0]), date:r[1] instanceof Date ? Utilities.formatDate(r[1],tz,'yyyy-MM-dd') : String(r[1]), type:r[2], account:r[3], destination:r[4]||'', category:r[5], amount:Number(r[6]), note:r[7]||'', createdAt:new Date(r[8]).getTime()||0}));
+    const transactions = rows_(ss, 'Transactions').filter(r => r[0]).map(r => ({id:String(r[0]), date:dateText_(r[1], tz), type:r[2], account:r[3], destination:r[4]||'', category:r[5], amount:Number(r[6]), note:r[7]||'', createdAt:new Date(r[8]).getTime()||0}));
     return json_({ok:true, ...readConfig_(ss), transactions});
   });
 }

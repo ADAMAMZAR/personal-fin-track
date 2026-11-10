@@ -25,7 +25,8 @@ Open <http://localhost:3000>. On first launch the app asks for each account's st
 
 - **Three entry types:** Spend, Money in, and Transfer between your own accounts. Cash, TNG eWallet, ShopeePay, Maybank and Wise are set up to start.
 - **Monthly dashboard:** total balance, money in and out, savings rate, spending by category, and per-account balances.
-- **Annual insights:** yearly income, spending and savings, month-by-month spending, and income by source.
+- **Any month's snapshot:** pick a month next to **Your rhythm** to see what you saved and spent, by category.
+- **Annual insights:** yearly income, spending and savings, month-by-month spending, and income by source for the year.
 - **Offline-first PWA:** install it to your home screen. Entries save to the device first and upload when you're back online.
 - **Two-way Google Sheets sync:** the Sheet is the source of truth. Edit or delete a row there and every device follows.
 - **Your own accounts and categories:** add, rename, reorder, archive or delete them from the app (**Manage** next to Accounts, and **⚙ Settings → Manage categories**). Anything with entries is archived instead of deleted, so history and balances stay intact.
@@ -65,7 +66,9 @@ On first use the script adds the `Transactions`, `Accounts`, `Categories` and `S
 - **Offline:** entries stay on the device and upload automatically once you're back online.
 - **Sheet wins:** edits and deletions made in the Sheet replace the device's copy on the next reload. Entries still waiting to upload are kept.
 - **No duplicates:** the script skips any ID already in the Sheet. If rows ever go missing, **⚙ Settings → Resync all** sends every entry again.
-- **Fixing an entry:** tap it, then **Edit**. The form opens with its current details; change them and **Save changes**, or **Delete entry**. Both go straight to the Sheet and need a connection. **Clear local data** still wipes the current device only.
+- **Fixing an entry:** tap it, then **Edit**. The form opens with its current details; change anything, including the type, and **Save changes**, or **Delete entry** (tap **Undo** in the message to bring it back). Both go straight to the Sheet and need a connection. **Clear local data** still wipes the current device only.
+- **Fewer reloads:** coming back to the app reloads from the Sheet only if the last reload was over 30 seconds ago, or something is waiting to upload.
+- **Offline copy:** the app keeps its own files and fonts for offline use, never the Sheet's replies.
 - **Accounts, categories and settings:** changes made in the app go straight to the Sheet, need a connection, and show the script's answer (for example, "Cash is used by 2 entries. Archive it instead"). You can also edit the `Accounts`, `Categories` and `Settings` tabs directly. Either way, every device picks up the change on its next reload. Without a Sheet, the same changes apply to the device only.
 
 **Sheet format:** [docs/sheets-schema.md](docs/sheets-schema.md) lists every column of every tab, with examples. Rows you add to `Transactions` by hand need a unique ID in column A, and an account ID (such as `tng`, not `TNG eWallet`) in the account columns. Dropdowns and checks in the Sheet reject most typos as you type.
@@ -115,6 +118,8 @@ Send a **POST** to your `/exec` URL with these form fields:
 - **Income sources:** `Salary`, `Foodpanda`, `Other income`, `Refund / reimbursement`, `Gift received`
 
 The reply is one line of plain text, such as `Saved RM12.50 · Food & drinks · TNG eWallet` or `Error: unknown category "Fod"`. Shortcuts show it as a notification.
+
+If the same entry (same type, amount, account, category, note and date) arrives twice within 2 minutes, for example because a shortcut timed out and you ran it again, the second one is skipped and the reply starts with `Already saved`. To log two identical entries back to back, give one a different note.
 
 </details>
 

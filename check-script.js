@@ -94,6 +94,15 @@ assert.strictEqual(t.quick({type:'expense',amount:'1',account:'ShopeePay',catego
 assert.strictEqual(t.quick({type:'expense',amount:'1',account:'cash',category:'Coffee'}),'Error: unknown category "Coffee"');
 assert.strictEqual(t.quick({type:'income',amount:'1',account:'cash',category:'Starting balance'}),'Error: unknown category "Starting balance"');
 assert.strictEqual(t.quick({type:'expense',amount:'1',account:'cash',category:'Shopping',token:'wrong'}),'Error: wrong or missing token');
+// A shortcut run again after a timeout: the same entry within 2 minutes isn't added twice. A different note, or an older row, is a new entry.
+const shortcutRows=()=>t.rows('Transactions').filter(r=>r[0]).length,n0=shortcutRows();
+assert.strictEqual(t.quick({type:'expense',amount:'7',account:'cash',category:'Shopping',note:'Kopi'}),'Saved RM7.00 · Shopping · Cash');
+assert.strictEqual(t.quick({type:'expense',amount:'RM7.00',account:'Cash',category:'shopping',note:'Kopi '}),'Already saved RM7.00 · Shopping · Cash');
+assert.strictEqual(t.quick({type:'expense',amount:'7',account:'cash',category:'Shopping',note:'Teh'}),'Saved RM7.00 · Shopping · Cash');
+assert.strictEqual(shortcutRows(),n0+2);
+t.tabs.get('Transactions').data.find(r=>r[7]==='Kopi')[8]=new Date(Date.now()-180000).toISOString(); // 3 minutes ago
+assert.strictEqual(t.quick({type:'expense',amount:'7',account:'cash',category:'Shopping',note:'Kopi'}),'Saved RM7.00 · Shopping · Cash');
+t.tabs.get('Transactions').data=t.tabs.get('Transactions').data.filter(r=>!['Kopi','Teh'].includes(r[7])); // keep later counts as they were
 // Account changes from the Manage screen.
 const P=b=>JSON.parse(t.post(b)),acc=()=>t.rows('Accounts').filter(r=>r.length);
 assert.deepStrictEqual(P({action:'saveAccount',account:{name:"Touch 'n Go Card",icon:'💳🎉🎈',openingBalance:12.345}}),{ok:true,id:'touch-n-go-card'});

@@ -1,6 +1,6 @@
 // Run: node check-sync.js — loads dist/app.js with a stub DOM and a fake Sheet, checks the upgrade from 'Starting balance' rows, what gets sent, how pull() merges, and how History groups by day.
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const el=()=>new Proxy({classList:{add(){},remove(){},toggle(){}},addEventListener(){},showModal(){},close(){},focus(){}},{get:(o,k)=>k in o?o[k]:''});
+const el=()=>new Proxy({classList:{add(){},remove(){},toggle(){}},addEventListener(){},append(){},showModal(){},close(){},focus(){}},{get:(o,k)=>k in o?o[k]:''});
 const tx=(id,account,amount,synced,more)=>({id,type:'expense',amount,account,destination:'',category:'Shopping',note:'',date:'2026-10-26',createdAt:5,synced,...more});
 const start=(id,account,amount,createdAt,synced)=>({id,type:'income',amount,account,destination:'',category:'Starting balance',note:'Starting balance',date:'2026-10-26',createdAt,synced});
 const acct=(id,openingBalance,archived=false)=>({id,name:id.toUpperCase(),icon:'',openingBalance,sort:1,archived});
@@ -11,7 +11,7 @@ const TOKEN='t0k&n',settings={scriptUrl:'https://fake/exec',appToken:TOKEN};
 function load(saved,sheet,reply=()=>({ok:true}),navigator={}){
   const store={'my-money-v1':JSON.stringify(saved)},posts=[],gets=[];
   const ctx=vm.createContext({document:{querySelector:el,querySelectorAll:()=>[],addEventListener(){}},window:{addEventListener(){}},location:{search:'',pathname:'/'},history:{replaceState(){}},localStorage:{getItem:k=>store[k]??null,setItem:(k,v)=>store[k]=v},
-    navigator,crypto,Intl,URLSearchParams,setTimeout,confirm:()=>false,fetch:async(url,o)=>{if(o&&o.method==='POST'){const body=JSON.parse(o.body);posts.push(body);if(o.mode!=='no-cors')return {json:async()=>reply(body)}}else gets.push(url);
+    navigator,crypto,Intl,URLSearchParams,setTimeout,clearTimeout,confirm:()=>false,fetch:async(url,o)=>{if(o&&o.method==='POST'){const body=JSON.parse(o.body);posts.push(body);if(o.mode!=='no-cors')return {json:async()=>reply(body)}}else gets.push(url);
       const ok=new URL(url).searchParams.get('token')===TOKEN;return {json:async()=>ok?JSON.parse(JSON.stringify(sheet)):{ok:false,error:'Wrong or missing app token'}}}});
   vm.runInContext(fs.readFileSync(__dirname+'/dist/app.js','utf8'),ctx);
   return {ctx,posts,gets,saved:()=>JSON.parse(store['my-money-v1'])};
@@ -128,5 +128,9 @@ function load(saved,sheet,reply=()=>({ok:true}),navigator={}){
   assert.ok((await n.ctx.change({action:'deleteTransaction',id:'b'})).ok);
   assert.deepStrictEqual(n.saved().transactions.map(t=>[t.id,t.amount,t.note,t.category]),[['a',9,'typo','Shopping']]);
   assert.deepStrictEqual(n.posts,[]);
+  // Undo after a delete saves the entry again, which adds it back with its ID and Created At.
+  const {synced,...deleted}=tx('b','cash',2,false,{createdAt:42});
+  assert.ok((await n.ctx.change({action:'saveTransaction',transaction:deleted})).ok);
+  assert.deepStrictEqual(n.saved().transactions.map(t=>[t.id,t.createdAt,t.synced]),[['a',5,false],['b',42,false]]);
   console.log('sync check ok');
 })().catch(e=>{console.error(e);process.exit(1)});
