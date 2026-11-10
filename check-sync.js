@@ -115,7 +115,8 @@ function load(saved,sheet,reply=()=>({ok:true}),navigator={}){
   await ed.ctx.syncNow();
   const fix={id:'waiting',type:'expense',amount:40,account:'cash',destination:'',category:'Shopping',note:'fixed',date:'2026-10-25',createdAt:5};
   assert.deepStrictEqual({...await ed.ctx.change({action:'saveTransaction',transaction:fix})},{ok:true});
-  assert.deepStrictEqual({...ed.posts.at(-1)},{action:'saveTransaction',transaction:fix,token:TOKEN});
+  assert.deepStrictEqual(ed.posts.filter(p=>p.action==='saveTransaction'),[{action:'saveTransaction',transaction:fix,token:TOKEN}]);
+  const getsAfterSave=ed.gets.length;await ed.ctx.syncNow();assert.ok(ed.gets.length>=getsAfterSave+1); // the reload still happens, in the background
   const fixed=ed.saved().transactions.find(t=>t.id==='waiting');
   assert.deepStrictEqual([fixed.amount,fixed.note,fixed.date,fixed.synced],[40,'fixed','2026-10-25',false]);
   assert.deepStrictEqual({...await ed.ctx.change({action:'deleteTransaction',id:'stuck'})},{ok:false,error:'Busy'});
