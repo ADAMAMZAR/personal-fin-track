@@ -107,5 +107,25 @@ function load(saved,sheet,reply=()=>({ok:true}),navigator={}){
   const html=h.ctx.row(tx('x','cash',1,true,{note:'Nasi <lemak>',date:'2025-01-05'})),fold=html.indexOf('</summary>');
   assert.ok(html.startsWith('<details class="transaction-row">')&&!html.includes(' open'));
   assert.ok(html.indexOf('Shopping')<fold&&html.indexOf('Nasi &#60;lemak&#62;')>fold&&html.indexOf('Cash')>fold);
+  assert.ok(html.indexOf('data-edit-entry="x"')>fold); // Edit sits in the expandable part
+
+  // 7. Editing and deleting an entry: the script's answer decides, and the device's copy follows only on ok,
+  // so an entry the Sheet hasn't confirmed yet can't survive the reload unchanged.
+  const ed=load({onboarded:true,settings,transactions:[tx('waiting','cash',4,false),tx('stuck','cash',6,false)]},{...sheet,transactions:[]},b=>b.id==='stuck'?{ok:false,error:'Busy'}:{ok:true});
+  await ed.ctx.syncNow();
+  const fix={id:'waiting',type:'expense',amount:40,account:'cash',destination:'',category:'Shopping',note:'fixed',date:'2026-10-25',createdAt:5};
+  assert.deepStrictEqual({...await ed.ctx.change({action:'saveTransaction',transaction:fix})},{ok:true});
+  assert.deepStrictEqual({...ed.posts.at(-1)},{action:'saveTransaction',transaction:fix,token:TOKEN});
+  const fixed=ed.saved().transactions.find(t=>t.id==='waiting');
+  assert.deepStrictEqual([fixed.amount,fixed.note,fixed.date,fixed.synced],[40,'fixed','2026-10-25',false]);
+  assert.deepStrictEqual({...await ed.ctx.change({action:'deleteTransaction',id:'stuck'})},{ok:false,error:'Busy'});
+  assert.deepStrictEqual({...await ed.ctx.change({action:'deleteTransaction',id:'waiting'})},{ok:true});
+  assert.deepStrictEqual(ed.saved().transactions.map(t=>t.id),['stuck']); // refused delete kept, accepted one gone
+  // No Sheet: the same edits apply on the device, and nothing is sent.
+  const n=load({onboarded:true,settings:{},transactions:[tx('a','cash',1,false),tx('b','cash',2,false)]},sheet);
+  assert.ok((await n.ctx.change({action:'saveTransaction',transaction:{id:'a',amount:9,note:'typo'}})).ok);
+  assert.ok((await n.ctx.change({action:'deleteTransaction',id:'b'})).ok);
+  assert.deepStrictEqual(n.saved().transactions.map(t=>[t.id,t.amount,t.note,t.category]),[['a',9,'typo','Shopping']]);
+  assert.deepStrictEqual(n.posts,[]);
   console.log('sync check ok');
 })().catch(e=>{console.error(e);process.exit(1)});

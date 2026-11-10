@@ -106,6 +106,7 @@ These apply to changes made in the app, which go through the script (or, without
 - **Renaming a category updates history:** every `Transactions` row with the old name and the same Type gets the new name.
 - **`Transfer` and `Starting balance` are reserved** and can't be used as category names.
 - **Phone shortcuts accept active items only:** `quickAdd` rejects archived accounts and categories.
+- **Edited entries are checked like new ones:** a known account, a category of the entry's Type, an amount above 0 and a `YYYY-MM-DD` date. Archived accounts and categories are allowed, so an old entry can be fixed in place. The ID and Created At never change.
 
 ## Checks in the Sheet
 

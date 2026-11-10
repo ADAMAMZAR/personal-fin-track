@@ -140,6 +140,26 @@ assert.deepStrictEqual(t.get().accounts.find(a=>a.id==='wise').sort,1);
 P({action:'reorder',list:'income',keys:['Groceries','Foodpanda','Salary']}); // 'Groceries' is only an expense now -> untouched
 assert.deepStrictEqual(cat().filter(r=>['Salary','Foodpanda','Groceries'].includes(r[0])).map(r=>r.slice(0,3).join(':')),['Salary:income:3','Foodpanda:income:2','Groceries:expense:13']);
 assert.deepStrictEqual(P({action:'reorder',list:'nope',keys:[]}),{ok:false,error:'Unknown list'});
+// Editing and deleting an entry from the app.
+const entry=id=>t.rows('Transactions').find(r=>r[0]===id);
+const E={id:'e1',type:'expense',amount:13.456,account:'tng',destination:'',category:'Shopping',note:' Lunch ',date:'2026-10-21',createdAt:1};
+assert.deepStrictEqual(P({action:'saveTransaction',transaction:E}),{ok:true});
+assert.deepStrictEqual(entry('e1'),['e1','2026-10-21','expense','tng','','Shopping',13.46,'Lunch','2026-10-21T04:00:00.000Z']); // Created At untouched
+assert.deepStrictEqual(P({action:'saveTransaction',transaction:{...E,category:'Salary'}}),{ok:false,error:'Unknown category "Salary"'}); // an income category on an expense
+assert.deepStrictEqual(P({action:'saveTransaction',transaction:{...E,category:'Parking'}}),{ok:true}); // archived is fine
+assert.deepStrictEqual(P({action:'saveTransaction',transaction:{...E,amount:0}}),{ok:false,error:'Amount must be more than 0'});
+assert.deepStrictEqual(P({action:'saveTransaction',transaction:{...E,account:'nope'}}),{ok:false,error:'Unknown account "nope"'});
+assert.deepStrictEqual(P({action:'saveTransaction',transaction:{...E,type:'transfer',destination:'tng'}}),{ok:false,error:'Choose a different destination account'});
+assert.deepStrictEqual(P({action:'saveTransaction',transaction:{...E,date:'soon'}}),{ok:false,error:'Pick a date'});
+const before=t.rows('Transactions').filter(r=>r[0]).length;
+assert.deepStrictEqual(P({action:'saveTransaction',transaction:{...E,id:'never-synced',type:'transfer',destination:'maybank'}}),{ok:true}); // not in the Sheet yet -> added
+assert.deepStrictEqual(entry('never-synced').slice(2,7),['transfer','tng','maybank','Transfer',13.46]);
+assert.strictEqual(t.rows('Transactions').filter(r=>r[0]).length,before+1);
+assert.deepStrictEqual(P({action:'deleteTransaction',id:'never-synced'}),{ok:true});
+assert.deepStrictEqual(P({action:'deleteTransaction',id:'never-synced'}),{ok:true}); // already gone is fine
+assert.ok(!entry('never-synced')&&entry('e1'));
+assert.strictEqual(JSON.parse(t.post({action:'deleteTransaction',id:'e1'},'bad')).ok,false); // still needs the token
+assert.ok(entry('e1'));
 // The last active account, or the last active category of a type, can't be archived or deleted.
 const k=run([]);k.get();const K=b=>JSON.parse(k.post(b));
 ['cash','tng','shopeepay','maybank'].forEach(id=>assert.ok(K({action:'archiveAccount',id}).ok));

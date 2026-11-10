@@ -107,7 +107,39 @@ function setOpeningBalances_(ss, balances) {
 
 // Account and category changes from the app. Each returns {ok:true, ...} or {ok:false, error} for the app to show.
 // Accounts are matched by ID, categories by type + exact name.
-const CHANGES = {saveAccount:saveAccount_, archiveAccount:archiveAccount_, deleteAccount:deleteAccount_, saveCategory:saveCategory_, archiveCategory:archiveCategory_, deleteCategory:deleteCategory_, reorder:reorder_};
+const CHANGES = {saveAccount:saveAccount_, archiveAccount:archiveAccount_, deleteAccount:deleteAccount_, saveCategory:saveCategory_, archiveCategory:archiveCategory_, deleteCategory:deleteCategory_, reorder:reorder_, saveTransaction:saveTransaction_, deleteTransaction:deleteTransaction_};
+
+// An entry edited in the app. transaction: the whole entry. It overwrites the row with its ID, or is added if it never reached the Sheet.
+// Archived accounts and categories are allowed, so an old entry can be fixed without moving it.
+function saveTransaction_(ss, body) {
+  const t = body.transaction || {}, id = text_(t.id), type = text_(t.type).toLowerCase(), amount = Number(t.amount), date = text_(t.date);
+  if (!id) return fail_('Missing entry ID');
+  if (!['income','expense','transfer'].includes(type)) return fail_('Type must be income, expense or transfer');
+  if (!(amount > 0) || !isFinite(amount)) return fail_('Amount must be more than 0');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail_('Pick a date');
+  const {accounts, categories} = readConfig_(ss), known = x => accounts.some(a => a.id === x);
+  const account = text_(t.account), destination = type === 'transfer' ? text_(t.destination) : '';
+  if (!known(account)) return fail_('Unknown account "' + account + '"');
+  let category = 'Transfer';
+  if (type === 'transfer') {
+    if (!known(destination) || destination === account) return fail_('Choose a different destination account');
+  } else {
+    category = text_(t.category);
+    if (!categories.some(c => c.type === type && c.name === category)) return fail_('Unknown category "' + category + '"');
+  }
+  const sheet = ss.getSheetByName('Transactions'), i = rows_(ss, 'Transactions').findIndex(r => text_(r[0]) === id);
+  const row = [date, type, account, destination, category, round2_(amount), text_(t.note)];
+  if (i >= 0) sheet.getRange(i + 2, 2, 1, row.length).setValues([row]); // ID and Created At stay as they are
+  else sheet.getRange(sheet.getLastRow() + 1, 1, 1, TABS.Transactions.length).setValues([[id, ...row, new Date(Number(t.createdAt) || Date.now()).toISOString()]]);
+  return {ok:true};
+}
+
+// An entry deleted in the app. One already gone counts as deleted.
+function deleteTransaction_(ss, body) {
+  const id = text_(body.id), i = id ? rows_(ss, 'Transactions').findIndex(r => text_(r[0]) === id) : -1;
+  if (i >= 0) deleteRows_(ss.getSheetByName('Transactions'), [i + 2]);
+  return {ok:true};
+}
 
 // list: 'accounts', or a category type ('expense' / 'income'). keys: that list's account IDs or category names in the new order.
 // Rows not in keys keep their Sort.

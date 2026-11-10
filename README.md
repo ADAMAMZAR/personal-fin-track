@@ -65,7 +65,7 @@ On first use the script adds the `Transactions`, `Accounts`, `Categories` and `S
 - **Offline:** entries stay on the device and upload automatically once you're back online.
 - **Sheet wins:** edits and deletions made in the Sheet replace the device's copy on the next reload. Entries still waiting to upload are kept.
 - **No duplicates:** the script skips any ID already in the Sheet. If rows ever go missing, **⚙ Settings → Resync all** sends every entry again.
-- **The app never deletes from the Sheet:** **Clear local data** wipes the current device only.
+- **Fixing an entry:** tap it, then **Edit**. The form opens with its current details; change them and **Save changes**, or **Delete entry**. Both go straight to the Sheet and need a connection. **Clear local data** still wipes the current device only.
 - **Accounts, categories and settings:** changes made in the app go straight to the Sheet, need a connection, and show the script's answer (for example, "Cash is used by 2 entries. Archive it instead"). You can also edit the `Accounts`, `Categories` and `Settings` tabs directly. Either way, every device picks up the change on its next reload. Without a Sheet, the same changes apply to the device only.
 
 **Sheet format:** [docs/sheets-schema.md](docs/sheets-schema.md) lists every column of every tab, with examples. Rows you add to `Transactions` by hand need a unique ID in column A, and an account ID (such as `tng`, not `TNG eWallet`) in the account columns. Dropdowns and checks in the Sheet reject most typos as you type.
@@ -191,6 +191,7 @@ It opens the live app's page in a hidden Edge window and sends five requests fro
 - old `Starting balance` rows become opening balances
 - every request carries the app token, and a refused token leaves the device's data untouched
 - account and category changes return the script's answer, refuse to run offline, and follow the same rules on a device with no Sheet
+- an edited or deleted entry changes on the device only when the script accepts it
 
 </details>
 
